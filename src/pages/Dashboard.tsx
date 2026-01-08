@@ -1,14 +1,19 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Trophy, LogOut, TrendingUp, Target } from 'lucide-react';
+import { Plus, Target } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Logo } from '@/components/Logo';
 import { MatchCard } from '@/components/MatchCard';
 import { CreateMatchModal } from '@/components/CreateMatchModal';
 import { Scoreboard } from '@/components/Scoreboard';
+import { MatchReplay } from '@/components/MatchReplay';
+import { HallOfFame } from '@/components/HallOfFame';
+import { Statistics } from '@/components/Statistics';
+import { Profile } from '@/components/Profile';
 import { BottomNav } from '@/components/BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
 import { useMatch } from '@/contexts/MatchContext';
+import { Match } from '@/types/golf';
 
 type Tab = 'home' | 'hall' | 'stats' | 'profile';
 
@@ -17,6 +22,7 @@ export const Dashboard: React.FC = () => {
   const { matches, activeMatch, setActiveMatch, getMatchById } = useMatch();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('home');
+  const [viewingMatch, setViewingMatch] = useState<Match | null>(null);
 
   const handleMatchCreated = (matchId: string) => {
     const match = getMatchById(matchId);
@@ -25,14 +31,33 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const handleMatchClick = (match: Match) => {
+    if (match.status === 'finished') {
+      setViewingMatch(match);
+    } else {
+      setActiveMatch(match);
+    }
+  };
+
   const ongoingMatches = matches.filter(m => m.status === 'ongoing');
   const finishedMatches = matches.filter(m => m.status === 'finished');
 
+  // Show Scoreboard for ongoing match
   if (activeMatch) {
     return (
       <Scoreboard
         match={activeMatch}
         onBack={() => setActiveMatch(null)}
+      />
+    );
+  }
+
+  // Show MatchReplay for finished match (view only)
+  if (viewingMatch) {
+    return (
+      <MatchReplay
+        match={viewingMatch}
+        onBack={() => setViewingMatch(null)}
       />
     );
   }
@@ -43,11 +68,9 @@ export const Dashboard: React.FC = () => {
       <header className="bg-card border-b border-border p-4">
         <div className="flex items-center justify-between">
           <Logo size="sm" />
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground hidden sm:block">
-              Hola, {user?.name}
-            </span>
-          </div>
+          <span className="text-sm text-muted-foreground">
+            Hola, {user?.name}
+          </span>
         </div>
       </header>
 
@@ -63,7 +86,7 @@ export const Dashboard: React.FC = () => {
             {/* Ongoing Matches */}
             <section>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-foreground">Partides en joc</h2>
+                <h2 className="text-base font-medium text-foreground">Partides en joc</h2>
                 <span className="text-sm text-muted-foreground">{ongoingMatches.length}</span>
               </div>
               {ongoingMatches.length > 0 ? (
@@ -77,7 +100,7 @@ export const Dashboard: React.FC = () => {
                     >
                       <MatchCard
                         match={match}
-                        onClick={() => setActiveMatch(match)}
+                        onClick={() => handleMatchClick(match)}
                       />
                     </motion.div>
                   ))}
@@ -91,7 +114,7 @@ export const Dashboard: React.FC = () => {
                   <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Target className="h-8 w-8 text-primary" />
                   </div>
-                  <h3 className="font-semibold text-foreground mb-2">Cap partida activa</h3>
+                  <h3 className="font-medium text-foreground mb-2">Cap partida activa</h3>
                   <p className="text-sm text-muted-foreground mb-4">
                     Crea una nova partida per començar a jugar amb els teus amics
                   </p>
@@ -106,7 +129,7 @@ export const Dashboard: React.FC = () => {
             {/* Recent Matches */}
             {finishedMatches.length > 0 && (
               <section>
-                <h2 className="text-lg font-bold text-foreground mb-4">Partides recents</h2>
+                <h2 className="text-base font-medium text-foreground mb-4">Partides recents</h2>
                 <div className="space-y-3">
                   {finishedMatches.slice(0, 3).map((match, index) => (
                     <motion.div
@@ -117,7 +140,7 @@ export const Dashboard: React.FC = () => {
                     >
                       <MatchCard
                         match={match}
-                        onClick={() => setActiveMatch(match)}
+                        onClick={() => handleMatchClick(match)}
                       />
                     </motion.div>
                   ))}
@@ -135,15 +158,10 @@ export const Dashboard: React.FC = () => {
             exit={{ opacity: 0 }}
             className="p-4"
           >
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-eagle/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Trophy className="h-10 w-10 text-eagle" />
-              </div>
-              <h2 className="text-xl font-bold text-foreground mb-2">Hall of Fame</h2>
-              <p className="text-muted-foreground">
-                Juga més partides per desbloquejar el saló de la fama
-              </p>
-            </div>
+            <HallOfFame 
+              matches={matches} 
+              onViewMatch={(match) => setViewingMatch(match)}
+            />
           </motion.main>
         )}
 
@@ -155,15 +173,7 @@ export const Dashboard: React.FC = () => {
             exit={{ opacity: 0 }}
             className="p-4"
           >
-            <div className="text-center py-12">
-              <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                <TrendingUp className="h-10 w-10 text-primary" />
-              </div>
-              <h2 className="text-xl font-bold text-foreground mb-2">Estadístiques</h2>
-              <p className="text-muted-foreground">
-                Les teves estadístiques apareixeran aquí quan juguis partides
-              </p>
-            </div>
+            <Statistics matches={matches} />
           </motion.main>
         )}
 
@@ -175,37 +185,11 @@ export const Dashboard: React.FC = () => {
             exit={{ opacity: 0 }}
             className="p-4"
           >
-            <div className="bg-card rounded-2xl p-6 shadow-card border border-border/50 mb-4">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="w-16 h-16 bg-primary rounded-full flex items-center justify-center text-2xl font-bold text-primary-foreground">
-                  {user?.name?.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-foreground">{user?.name}</h2>
-                  <p className="text-sm text-muted-foreground">{user?.email}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-foreground">{matches.length}</p>
-                  <p className="text-xs text-muted-foreground">Partides</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-success">{finishedMatches.length}</p>
-                  <p className="text-xs text-muted-foreground">Acabades</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-bold text-eagle">0</p>
-                  <p className="text-xs text-muted-foreground">Victòries</p>
-                </div>
-              </div>
-
-              <Button variant="outline" className="w-full" onClick={logout}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Tancar sessió
-              </Button>
-            </div>
+            <Profile 
+              user={user} 
+              matches={matches} 
+              onLogout={logout}
+            />
           </motion.main>
         )}
       </AnimatePresence>
