@@ -273,6 +273,21 @@
   background: hsl(var(--primary) / 0.5);
 }
 
+/* Hide scrollbar for profile section on mobile */
+.profile-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+.profile-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
 /* Safe area padding for mobile */
 @supports (padding-top: env(safe-area-inset-top)) {
   .safe-top {

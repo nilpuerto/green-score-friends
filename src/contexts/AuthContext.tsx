@@ -10,7 +10,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (name: string, password: string) => Promise<boolean>;
   register: (name: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -23,15 +23,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return saved ? JSON.parse(saved) : null;
   });
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (name: string, password: string): Promise<boolean> => {
     // Simulate login - in production, this would call an API
     await new Promise(resolve => setTimeout(resolve, 800));
     
-    if (email && password.length >= 4) {
+    if (name && password.length >= 4) {
       const newUser = {
         id: crypto.randomUUID(),
-        name: email.split('@')[0],
-        email,
+        name,
+        email: `${name.toLowerCase().replace(/\s+/g, '.')}@greenhunter.local`, // Generate email from name
       };
       setUser(newUser);
       localStorage.setItem('greenHuntersUser', JSON.stringify(newUser));

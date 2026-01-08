@@ -8,36 +8,15 @@ interface MatchContextType {
   setActiveMatch: (match: Match | null) => void;
   updateScore: (matchId: string, playerId: string, holeNumber: number, strokes: number) => void;
   finishMatch: (matchId: string) => void;
+  deleteMatch: (matchId: string) => void;
   getMatchById: (id: string) => Match | undefined;
 }
 
 const MatchContext = createContext<MatchContextType | undefined>(undefined);
 
-const defaultPlayers: Player[] = [
-  { id: '1', name: 'Tu', color: '#1B5E3C' },
-  { id: '2', name: 'Joan', color: '#2D7A50' },
-  { id: '3', name: 'Nil', color: '#3D9A64' },
-];
+// defaultPlayers ya no se usa - los jugadores se crean dinámicamente en CreateMatchModal
 
-const sampleMatches: Match[] = [
-  {
-    id: '1',
-    name: 'Torneig del Dissabte',
-    course: 'Club de Golf Barcelona',
-    holes: Array.from({ length: 9 }, (_, i) => ({ number: i + 1, par: [4, 3, 5, 4, 4, 3, 5, 4, 4][i] })),
-    players: defaultPlayers,
-    scores: [
-      { playerId: '1', holeNumber: 1, strokes: 4 },
-      { playerId: '2', holeNumber: 1, strokes: 5 },
-      { playerId: '3', holeNumber: 1, strokes: 3 },
-      { playerId: '1', holeNumber: 2, strokes: 3 },
-      { playerId: '2', holeNumber: 2, strokes: 3 },
-      { playerId: '3', holeNumber: 2, strokes: 4 },
-    ],
-    status: 'ongoing',
-    createdAt: new Date(),
-  },
-];
+const sampleMatches: Match[] = [];
 
 export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [matches, setMatches] = useState<Match[]>(sampleMatches);
@@ -122,6 +101,14 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     return matches.find(m => m.id === id);
   }, [matches]);
 
+  const deleteMatch = useCallback((matchId: string) => {
+    setMatches(prev => prev.filter(m => m.id !== matchId));
+    // Si el match activo es el que se elimina, limpiarlo
+    if (activeMatch?.id === matchId) {
+      setActiveMatch(null);
+    }
+  }, [activeMatch]);
+
   return (
     <MatchContext.Provider value={{
       matches,
@@ -130,6 +117,7 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       setActiveMatch,
       updateScore,
       finishMatch,
+      deleteMatch,
       getMatchById,
     }}>
       {children}

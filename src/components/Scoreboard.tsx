@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronLeft, Trophy, Minus, Plus } from 'lucide-react';
+import { ChevronLeft, Trophy, Minus, Plus, ChevronRight } from 'lucide-react';
 import { Match, ScoreType } from '@/types/golf';
 import { useMatch } from '@/contexts/MatchContext';
 import { PlayerAvatar } from './PlayerAvatar';
@@ -18,6 +18,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
   const [currentHole, setCurrentHole] = useState(1);
   const [animationType, setAnimationType] = useState<ScoreType | null>(null);
   const [lastUpdatedPlayer, setLastUpdatedPlayer] = useState<string | null>(null);
+  const animationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const getPlayerScore = (playerId: string, holeNumber: number) => {
     return match.scores.find(s => s.playerId === playerId && s.holeNumber === holeNumber)?.strokes;
@@ -31,6 +32,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
 
   const getScoreType = (strokes: number, par: number): ScoreType => {
     const diff = strokes - par;
+    if (strokes === 1) return 'hole-in-one';
     if (diff <= -2) return 'eagle';
     if (diff === -1) return 'birdie';
     if (diff === 0) return 'par';
@@ -53,12 +55,24 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
     const currentScore = getPlayerScore(playerId, currentHole) || match.holes[currentHole - 1].par;
     const newScore = Math.max(1, currentScore + delta);
     
+    // Detener animación anterior inmediatamente
+    if (animationTimeoutRef.current) {
+      clearTimeout(animationTimeoutRef.current);
+      animationTimeoutRef.current = null;
+    }
+    setAnimationType(null);
+    
     updateScore(match.id, playerId, currentHole, newScore);
     setLastUpdatedPlayer(playerId);
 
-    const scoreType = getScoreType(newScore, match.holes[currentHole - 1].par);
-    if (scoreType === 'birdie' || scoreType === 'eagle') {
-      setAnimationType(scoreType);
+    const par = match.holes[currentHole - 1].par;
+    const scoreType = getScoreType(newScore, par);
+    
+    // Mostrar animación solo para scores buenos
+    if (scoreType === 'hole-in-one' || scoreType === 'eagle' || scoreType === 'birdie') {
+      setTimeout(() => {
+        setAnimationType(scoreType);
+      }, 50);
     }
   }, [currentHole, match, updateScore]);
 
@@ -74,6 +88,23 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
 
   const leader = getLeader();
   const currentHolePar = match.holes[currentHole - 1]?.par || 4;
+
+  // Detener animación cuando cambia el hoyo
+  useEffect(() => {
+    setAnimationType(null);
+  }, [currentHole]);
+
+  // Función para avanzar al siguiente hoyo
+  const handleNextHole = () => {
+    if (currentHole < match.holes.length) {
+      setCurrentHole(currentHole + 1);
+    }
+  };
+
+  // Verificar si todos los jugadores tienen puntuación en el hoyo actual
+  const allPlayersScored = match.players.every(p => 
+    getPlayerScore(p.id, currentHole) !== undefined
+  );
 
   const handleFinishMatch = () => {
     finishMatch(match.id);
@@ -208,24 +239,39 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
         })}
       </div>
 
-      {/* Finish button */}
-      {allHolesComplete && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="fixed bottom-6 left-4 right-4 safe-bottom"
-        >
-          <Button
-            onClick={handleFinishMatch}
-            variant="eagle"
-            size="lg"
-            className="w-full"
+      {/* Next button or Finish button */}
+      <div className="fixed bottom-6 left-4 right-4 safe-bottom">
+        {allHolesComplete ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
           >
-            <Trophy className="h-5 w-5 mr-2" />
-            Acabar Partida
-          </Button>
-        </motion.div>
-      )}
+            <Button
+              onClick={handleFinishMatch}
+              variant="eagle"
+              size="lg"
+              className="w-full"
+            >
+              <Trophy className="h-5 w-5 mr-2" />
+              Acabar Partida
+            </Button>
+          </motion.div>
+        ) : allPlayersScored && currentHole < match.holes.length ? (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <Button
+              onClick={handleNextHole}
+              size="lg"
+              className="w-full"
+            >
+              Seguent
+              <ChevronRight className="h-5 w-5 ml-2" />
+            </Button>
+          </motion.div>
+        ) : null}
+      </div>
     </div>
   );
 };

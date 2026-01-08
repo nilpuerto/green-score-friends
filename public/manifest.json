@@ -1,0 +1,22 @@
+{
+  "name": "Green Hunters",
+  "short_name": "Green Hunters",
+  "description": "Segueix les teves partides de golf amb els teus amics",
+  "icons": [
+    {
+      "src": "/logo.jpg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/logo.jpg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ],
+  "theme_color": "#1B5E3C",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "start_url": "/"
+}
+

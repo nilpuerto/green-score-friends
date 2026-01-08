@@ -279,47 +279,134 @@ export const MatchReplay: React.FC<MatchReplayProps> = ({ match, onBack }) => {
               </div>
             </div>
 
-            {/* Live standings during replay */}
+            {/* Live standings during replay with animated avatars */}
             <div className="space-y-3">
-              {getCurrentStandings().map((item, index) => (
-                <motion.div
-                  key={item.player.id}
-                  layout
-                  className="bg-card rounded-2xl p-4 shadow-card border border-border/50"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                      index === 0 ? 'bg-eagle text-eagle-foreground' :
-                      index === 1 ? 'bg-muted text-foreground' :
-                      'bg-muted text-muted-foreground'
-                    }`}>
-                      {index + 1}
-                    </span>
-                    <PlayerAvatar
-                      name={item.player.name}
-                      color={item.player.color}
-                      size="md"
-                      isLeader={index === 0}
-                      animate={true}
+              {(() => {
+                const currentStandings = getCurrentStandings();
+                const previousStandings = currentHole > 1 
+                  ? match.players
+                      .map(player => ({
+                        player,
+                        total: getPlayerTotal(player.id, currentHole - 1),
+                      }))
+                      .sort((a, b) => a.total - b.total)
+                  : currentStandings;
+                
+                return currentStandings.map((item, index) => {
+                  const previousIndex = previousStandings.findIndex(p => p.player.id === item.player.id);
+                  const positionChanged = previousIndex !== index && previousIndex !== -1;
+                const currentScore = getPlayerScore(item.player.id, currentHole);
+                const previousTotal = currentHole > 1 
+                  ? match.scores
+                      .filter(s => s.playerId === item.player.id && s.holeNumber < currentHole)
+                      .reduce((sum, s) => sum + s.strokes, 0)
+                  : 0;
+
+                return (
+                  <motion.div
+                    key={item.player.id}
+                    layout
+                    initial={false}
+                    animate={{
+                      y: 0,
+                      scale: positionChanged ? [1, 1.05, 1] : 1,
+                    }}
+                    transition={{
+                      layout: { duration: 0.5, ease: "easeInOut" },
+                      scale: { duration: 0.3 }
+                    }}
+                    className="bg-card rounded-2xl p-4 shadow-card border border-border/50 relative overflow-hidden"
+                  >
+                    {/* Progress indicator */}
+                    <motion.div
+                      className="absolute left-0 top-0 bottom-0 bg-primary/10"
+                      initial={{ width: 0 }}
+                      animate={{ 
+                        width: `${(item.total / (match.holes.reduce((sum, h) => sum + h.par, 0) * 2)) * 100}%`,
+                      }}
+                      transition={{ duration: 0.5 }}
                     />
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">{item.player.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {currentHole > 0 && `Forat ${currentHole}: `}
-                        {getPlayerScore(item.player.id, currentHole) || '-'}
-                      </p>
+                    
+                    <div className="flex items-center gap-3 relative z-10">
+                      <motion.span
+                        key={`rank-${index}-${currentHole}`}
+                        initial={{ scale: 0.8, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
+                          index === 0 ? 'bg-eagle text-eagle-foreground' :
+                          index === 1 ? 'bg-muted text-foreground' :
+                          'bg-muted text-muted-foreground'
+                        }`}
+                      >
+                        {index + 1}
+                      </motion.span>
+                      
+                      <motion.div
+                        animate={{
+                          x: positionChanged ? [0, 10, 0] : 0,
+                        }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <PlayerAvatar
+                          name={item.player.name}
+                          color={item.player.color}
+                          size="md"
+                          isLeader={index === 0}
+                          animate={true}
+                        />
+                      </motion.div>
+                      
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">{item.player.name}</p>
+                        <div className="flex items-center gap-2">
+                          {currentHole > 0 && (
+                            <>
+                              <p className="text-xs text-muted-foreground">
+                                Forat {currentHole}: 
+                              </p>
+                              <motion.span
+                                key={`score-${currentHole}-${item.player.id}`}
+                                initial={{ scale: 0.5, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                className="text-xs font-medium text-primary"
+                              >
+                                {currentScore || '-'}
+                              </motion.span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <motion.div
+                        key={`total-${item.total}-${currentHole}`}
+                        initial={{ scale: 0.8, y: -10 }}
+                        animate={{ scale: 1, y: 0 }}
+                        className="text-right"
+                      >
+                        <motion.span
+                          className="text-2xl font-medium text-primary block"
+                          animate={item.total !== previousTotal ? {
+                            scale: [1, 1.2, 1],
+                            color: ['hsl(var(--primary))', 'hsl(var(--eagle))', 'hsl(var(--primary))']
+                          } : {}}
+                        >
+                          {item.total || 0}
+                        </motion.span>
+                        {positionChanged && index < previousIndex && (
+                          <motion.span
+                            initial={{ opacity: 0, y: -5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="text-xs text-success"
+                          >
+                            ↑
+                          </motion.span>
+                        )}
+                      </motion.div>
                     </div>
-                    <motion.span
-                      key={item.total}
-                      initial={{ scale: 0.8 }}
-                      animate={{ scale: 1 }}
-                      className="text-2xl font-medium text-primary"
-                    >
-                      {item.total || 0}
-                    </motion.span>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+                });
+              })()}
             </div>
           </motion.div>
         )}

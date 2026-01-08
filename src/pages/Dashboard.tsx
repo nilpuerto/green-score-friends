@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Target } from 'lucide-react';
+import { Target, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Logo } from '@/components/Logo';
 import { MatchCard } from '@/components/MatchCard';
 import { CreateMatchModal } from '@/components/CreateMatchModal';
@@ -19,10 +29,11 @@ type Tab = 'home' | 'hall' | 'stats' | 'profile';
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
-  const { matches, activeMatch, setActiveMatch, getMatchById } = useMatch();
+  const { matches, activeMatch, setActiveMatch, getMatchById, deleteMatch } = useMatch();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [viewingMatch, setViewingMatch] = useState<Match | null>(null);
+  const [matchToDelete, setMatchToDelete] = useState<Match | null>(null);
 
   const handleMatchCreated = (matchId: string) => {
     const match = getMatchById(matchId);
@@ -32,15 +43,82 @@ export const Dashboard: React.FC = () => {
   };
 
   const handleMatchClick = (match: Match) => {
+    // Partidos acabados solo se pueden ver, no editar
     if (match.status === 'finished') {
       setViewingMatch(match);
     } else {
+      // Solo partidos en curso se pueden editar
       setActiveMatch(match);
     }
   };
 
+  const handleShareMatch = (match: Match) => {
+    // Calcular scores por jugador
+    const playerScores = match.players.map(player => {
+      const scores = match.scores.filter(s => s.playerId === player.id);
+      const total = scores.reduce((sum, s) => sum + s.strokes, 0);
+      const scoresByHole = match.holes.map(hole => {
+        const score = scores.find(s => s.holeNumber === hole.number);
+        return score ? score.strokes : '-';
+      });
+      return { player, total, scoresByHole };
+    }).sort((a, b) => a.total - b.total);
+
+    // Crear texto formateado
+    let shareText = `🏌️ *${match.name}*\n`;
+    shareText += `📍 ${match.course}\n\n`;
+    shareText += `*Resultats:*\n\n`;
+
+    playerScores.forEach((ps, index) => {
+      const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '🏌️';
+      shareText += `${medal} *${ps.player.name}*: ${ps.total} punts\n`;
+      
+      // Mostrar scores por hoyo
+      ps.scoresByHole.forEach((score, holeIndex) => {
+        if (score !== '-') {
+          shareText += `   Forat ${holeIndex + 1}: ${score}\n`;
+        }
+      });
+      shareText += '\n';
+    });
+
+    shareText += `\n🎯 Green Hunters`;
+
+    // Crear URL de WhatsApp
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
+    
+    // Intentar abrir WhatsApp
+    window.open(whatsappUrl, '_blank');
+  };
+
   const ongoingMatches = matches.filter(m => m.status === 'ongoing');
   const finishedMatches = matches.filter(m => m.status === 'finished');
+
+  // Calcular AVG puntos del usuario
+  const getUserAvgPoints = () => {
+    if (!user) return '0.0';
+    
+    const userMatches = finishedMatches.filter(match => 
+      match.players.some(p => p.name === user.name)
+    );
+    
+    if (userMatches.length === 0) return '0.0';
+    
+    let totalStrokes = 0;
+    let totalHoles = 0;
+    
+    userMatches.forEach(match => {
+      const userPlayer = match.players.find(p => p.name === user.name);
+      if (userPlayer) {
+        const userScores = match.scores.filter(s => s.playerId === userPlayer.id);
+        totalStrokes += userScores.reduce((sum, s) => sum + s.strokes, 0);
+        totalHoles += userScores.length;
+      }
+    });
+    
+    if (totalHoles === 0) return '0.0';
+    return (totalStrokes / totalHoles).toFixed(1);
+  };
 
   // Show Scoreboard for ongoing match
   if (activeMatch) {
@@ -63,17 +141,33 @@ export const Dashboard: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-24 safe-top">
+    <div className="min-h-screen bg-background pb-24 safe-top flex flex-col" style={{ height: '100vh', overflow: 'hidden' }}>
       {/* Header */}
-      <header className="bg-card border-b border-border p-4">
+      <header className="bg-card border-b border-border p-4 flex-shrink-0">
         <div className="flex items-center justify-between">
-          <Logo size="sm" />
-          <span className="text-sm text-muted-foreground">
-            Hola, {user?.name}
-          </span>
+          <div className="flex items-center gap-2">
+            <Logo size="md" showText={false} />
+            <span className="text-sm font-medium text-primary">Green Hunters</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {activeTab === 'home' && ongoingMatches.length > 0 && (
+              <div className="flex items-center gap-2 bg-primary/10 rounded-full px-3 py-1.5">
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+                <span className="text-xs font-medium text-primary">
+                  {ongoingMatches.length} {ongoingMatches.length === 1 ? 'partida activa' : 'partides actives'}
+                </span>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-primary">
+                AVG: {getUserAvgPoints()}
+              </span>
+            </div>
+          </div>
         </div>
       </header>
 
+      <div className="flex-1 overflow-hidden">
       <AnimatePresence mode="wait">
         {activeTab === 'home' && (
           <motion.main
@@ -81,7 +175,8 @@ export const Dashboard: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="p-4 space-y-6"
+            className="p-4 space-y-6 h-full overflow-y-auto"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
             {/* Ongoing Matches */}
             <section>
@@ -101,6 +196,7 @@ export const Dashboard: React.FC = () => {
                       <MatchCard
                         match={match}
                         onClick={() => handleMatchClick(match)}
+                        onDelete={match.status === 'finished' ? () => setMatchToDelete(match) : undefined}
                       />
                     </motion.div>
                   ))}
@@ -141,6 +237,8 @@ export const Dashboard: React.FC = () => {
                       <MatchCard
                         match={match}
                         onClick={() => handleMatchClick(match)}
+                        onDelete={() => setMatchToDelete(match)}
+                        onShare={() => handleShareMatch(match)}
                       />
                     </motion.div>
                   ))}
@@ -156,7 +254,8 @@ export const Dashboard: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="p-4"
+            className="p-4 overflow-y-auto"
+            style={{ height: 'calc(100vh - 180px)', WebkitOverflowScrolling: 'touch' }}
           >
             <HallOfFame 
               matches={matches} 
@@ -171,7 +270,8 @@ export const Dashboard: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="p-4"
+            className="p-4 h-full overflow-y-auto"
+            style={{ WebkitOverflowScrolling: 'touch' }}
           >
             <Statistics matches={matches} />
           </motion.main>
@@ -183,7 +283,14 @@ export const Dashboard: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="p-4"
+            className="p-4 profile-scroll h-full"
+            style={{ 
+              overflowY: 'scroll',
+              WebkitOverflowScrolling: 'touch',
+              paddingBottom: '6rem',
+              msOverflowStyle: 'none',
+              scrollbarWidth: 'none'
+            }}
           >
             <Profile 
               user={user} 
@@ -193,24 +300,7 @@ export const Dashboard: React.FC = () => {
           </motion.main>
         )}
       </AnimatePresence>
-
-      {/* FAB */}
-      {activeTab === 'home' && (
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className="fixed right-4 bottom-24 z-40"
-        >
-          <Button
-            variant="fab"
-            size="fab"
-            onClick={() => setShowCreateModal(true)}
-            className="shadow-lg"
-          >
-            <Plus className="h-6 w-6" />
-          </Button>
-        </motion.div>
-      )}
+      </div>
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
       <CreateMatchModal
@@ -218,6 +308,32 @@ export const Dashboard: React.FC = () => {
         onClose={() => setShowCreateModal(false)}
         onMatchCreated={handleMatchCreated}
       />
+      
+      {/* Delete Match Dialog */}
+      <AlertDialog open={!!matchToDelete} onOpenChange={(open) => !open && setMatchToDelete(null)}>
+        <AlertDialogContent className="max-w-[90vw] sm:max-w-lg p-4 sm:p-6 rounded-2xl">
+          <AlertDialogHeader className="pb-2">
+            <AlertDialogTitle className="text-lg">Eliminar partida</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm">
+              Estàs segur? Això eliminarà totes les estadístiques d'aquest partit.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
+            <AlertDialogCancel className="w-full sm:w-auto m-0">Cancel·lar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (matchToDelete) {
+                  deleteMatch(matchToDelete.id);
+                  setMatchToDelete(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full sm:w-auto m-0"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

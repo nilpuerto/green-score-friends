@@ -28,7 +28,7 @@ export interface Match {
   winnerId?: string;
 }
 
-export type ScoreType = 'eagle' | 'birdie' | 'par' | 'bogey' | 'double-bogey' | 'other';
+export type ScoreType = 'hole-in-one' | 'eagle' | 'birdie' | 'par' | 'bogey' | 'double-bogey' | 'other';
 
 export interface MatchStats {
   totalStrokes: number;

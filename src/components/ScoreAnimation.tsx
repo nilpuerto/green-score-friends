@@ -12,52 +12,113 @@ export const ScoreAnimation: React.FC<ScoreAnimationProps> = ({ type, onComplete
   const [show, setShow] = useState(false);
 
   useEffect(() => {
-    if (type) {
-      setShow(true);
+    // Si type es null, detener inmediatamente
+    if (!type) {
+      setShow(false);
+      onComplete?.();
+      return;
+    }
+    
+    setShow(true);
+    
+    let frameId: number | null = null;
+    const timeouts: NodeJS.Timeout[] = [];
       
-      if (type === 'birdie') {
+    if (type === 'hole-in-one') {
+      // Animación alucinante para hole-in-one
+      const duration = 5000;
+      const end = Date.now() + duration;
+      
+      const frame = () => {
+        if (Date.now() >= end) return;
+        
+        confetti({
+          particleCount: 3,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0 },
+          colors: ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFD700'],
+        });
+        confetti({
+          particleCount: 3,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1 },
+          colors: ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFD700'],
+        });
+        
+        if (Date.now() < end) {
+          frameId = requestAnimationFrame(frame);
+        }
+      };
+      frame();
+      
+      // Explosión central múltiple
+      for (let i = 0; i < 5; i++) {
+        const timeout = setTimeout(() => {
+          confetti({
+            particleCount: 200,
+            spread: 360,
+            origin: { y: 0.5, x: 0.5 },
+            colors: ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#00FFFF', '#FFD700', '#FFA500'],
+            shapes: ['circle', 'square'],
+          });
+        }, i * 300);
+        timeouts.push(timeout);
+      }
+    } else if (type === 'birdie') {
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.6 },
+        colors: ['#1B5E3C', '#2D7A50', '#3D9A64', '#FFD700'],
+      });
+    } else if (type === 'eagle') {
+      confetti({
+        particleCount: 100,
+        spread: 100,
+        origin: { y: 0.5 },
+        colors: ['#FFD700', '#FFA500', '#FF8C00'],
+      });
+      const timeout = setTimeout(() => {
         confetti({
           particleCount: 50,
-          spread: 60,
-          origin: { y: 0.6 },
-          colors: ['#1B5E3C', '#2D7A50', '#3D9A64', '#FFD700'],
+          angle: 60,
+          spread: 55,
+          origin: { x: 0 },
+          colors: ['#FFD700', '#FFA500'],
         });
-      } else if (type === 'eagle') {
         confetti({
-          particleCount: 100,
-          spread: 100,
-          origin: { y: 0.5 },
-          colors: ['#FFD700', '#FFA500', '#FF8C00'],
+          particleCount: 50,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1 },
+          colors: ['#FFD700', '#FFA500'],
         });
-        setTimeout(() => {
-          confetti({
-            particleCount: 50,
-            angle: 60,
-            spread: 55,
-            origin: { x: 0 },
-            colors: ['#FFD700', '#FFA500'],
-          });
-          confetti({
-            particleCount: 50,
-            angle: 120,
-            spread: 55,
-            origin: { x: 1 },
-            colors: ['#FFD700', '#FFA500'],
-          });
-        }, 200);
-      }
-
-      const timer = setTimeout(() => {
-        setShow(false);
-        onComplete?.();
-      }, 2000);
-
-      return () => clearTimeout(timer);
+      }, 200);
+      timeouts.push(timeout);
     }
+
+    const timer = setTimeout(() => {
+      setShow(false);
+      onComplete?.();
+    }, type === 'hole-in-one' ? 5000 : 2000);
+    timeouts.push(timer);
+
+    return () => {
+      // Limpiar todos los timeouts y animaciones
+      if (frameId !== null) {
+        cancelAnimationFrame(frameId);
+      }
+      timeouts.forEach(timeout => clearTimeout(timeout));
+      setShow(false);
+    };
   }, [type, onComplete]);
 
   const getContent = () => {
     switch (type) {
+      case 'hole-in-one':
+        return { emoji: '🏆', text: 'HOLE IN ONE!!!', color: 'text-eagle' };
       case 'eagle':
         return { emoji: '🦅', text: 'EAGLE!', color: 'text-eagle' };
       case 'birdie':
@@ -65,9 +126,9 @@ export const ScoreAnimation: React.FC<ScoreAnimationProps> = ({ type, onComplete
       case 'par':
         return { emoji: '✓', text: 'Par', color: 'text-primary' };
       case 'bogey':
-        return { emoji: '😅', text: 'Bogey', color: 'text-warning' };
+        return { emoji: '😔', text: 'Bogey', color: 'text-warning' };
       case 'double-bogey':
-        return { emoji: '😬', text: 'Double Bogey', color: 'text-destructive' };
+        return { emoji: '😓', text: 'Double Bogey', color: 'text-destructive' };
       default:
         return null;
     }
@@ -93,7 +154,7 @@ export const ScoreAnimation: React.FC<ScoreAnimationProps> = ({ type, onComplete
               initial={{ scale: 0 }}
               animate={{ scale: [0, 1.3, 1] }}
               transition={{ duration: 0.5 }}
-              className="text-7xl block mb-2"
+              className={`block mb-2 ${type === 'hole-in-one' ? 'text-9xl' : 'text-7xl'}`}
             >
               {content.emoji}
             </motion.span>
@@ -101,7 +162,10 @@ export const ScoreAnimation: React.FC<ScoreAnimationProps> = ({ type, onComplete
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className={`text-3xl font-bold ${content.color}`}
+              className={`${type === 'hole-in-one' ? 'text-5xl' : 'text-3xl'} font-bold ${content.color}`}
+              style={type === 'hole-in-one' ? {
+                textShadow: '0 0 20px currentColor, 0 0 40px currentColor',
+              } : {}}
             >
               {content.text}
             </motion.span>

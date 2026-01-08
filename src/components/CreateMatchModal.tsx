@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Plus, Minus, UserPlus } from 'lucide-react';
+import { X, Plus, Minus, UserPlus, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useMatch } from '@/contexts/MatchContext';
+import { usePlayers } from '@/contexts/PlayerContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Hole, Player } from '@/types/golf';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { PlayerAvatar } from './PlayerAvatar';
 import confetti from 'canvas-confetti';
 
 interface CreateMatchModalProps {
@@ -21,46 +25,89 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   onMatchCreated,
 }) => {
   const { createMatch } = useMatch();
+  const { players: availablePlayers, addPlayer } = usePlayers();
+  const { user } = useAuth();
   const [matchName, setMatchName] = useState('');
   const [course, setCourse] = useState('');
   const [numHoles, setNumHoles] = useState(9);
-  const [players, setPlayers] = useState<{ name: string }[]>([
-    { name: '' },
-    { name: '' },
-  ]);
+  const [selectedPlayers, setSelectedPlayers] = useState<string[]>([]);
+  const [showDropdowns, setShowDropdowns] = useState<boolean[]>([]);
 
-  const addPlayer = () => {
-    if (players.length < 6) {
-      setPlayers([...players, { name: '' }]);
+  // Inicializar con el usuario actual si existe
+  useEffect(() => {
+    if (isOpen) {
+      if (user) {
+        if (availablePlayers.length === 0) {
+          // Si no hay jugadores, añadir el usuario actual
+          const userPlayer = addPlayer(user.name);
+          setSelectedPlayers([userPlayer.id]);
+          setShowDropdowns([false]);
+        } else if (selectedPlayers.length === 0) {
+          // Si hay jugadores pero no hay seleccionados, seleccionar el usuario
+          const userPlayer = availablePlayers.find(p => p.name === user.name);
+          if (userPlayer) {
+            setSelectedPlayers([userPlayer.id]);
+            setShowDropdowns([false]);
+          } else {
+            const newPlayer = addPlayer(user.name);
+            setSelectedPlayers([newPlayer.id]);
+            setShowDropdowns([false]);
+          }
+        }
+      } else if (selectedPlayers.length === 0) {
+        // Si no hay usuario, empezar con 2 slots vacíos
+        setSelectedPlayers(['', '']);
+        setShowDropdowns([false, false]);
+      }
+    }
+  }, [isOpen]);
+
+  const addPlayerSlot = () => {
+    if (selectedPlayers.length < 6) {
+      setSelectedPlayers([...selectedPlayers, '']);
+      setShowDropdowns([...showDropdowns, false]);
     }
   };
 
-  const removePlayer = (index: number) => {
-    if (players.length > 2) {
-      setPlayers(players.filter((_, i) => i !== index));
+  const removePlayerSlot = (index: number) => {
+    if (selectedPlayers.length > 2) {
+      setSelectedPlayers(selectedPlayers.filter((_, i) => i !== index));
+      setShowDropdowns(showDropdowns.filter((_, i) => i !== index));
     }
   };
 
-  const updatePlayerName = (index: number, name: string) => {
-    const updated = [...players];
-    updated[index] = { name };
-    setPlayers(updated);
+  const updatePlayerSelection = (index: number, playerId: string) => {
+    const updated = [...selectedPlayers];
+    updated[index] = playerId;
+    setSelectedPlayers(updated);
+    
+    const dropdowns = [...showDropdowns];
+    dropdowns[index] = false;
+    setShowDropdowns(dropdowns);
   };
 
   const handleCreate = () => {
     if (!matchName.trim() || !course.trim()) return;
-    if (players.some(p => !p.name.trim())) return;
+    if (selectedPlayers.some(id => !id)) return;
 
     const holes: Hole[] = Array.from({ length: numHoles }, (_, i) => ({
       number: i + 1,
       par: 4,
     }));
 
-    const matchPlayers: Player[] = players.map((p, i) => ({
-      id: crypto.randomUUID(),
-      name: p.name,
-      color: playerColors[i % playerColors.length],
-    }));
+    const matchPlayers: Player[] = selectedPlayers
+      .map((playerId, i) => {
+        let player = availablePlayers.find(p => p.id === playerId);
+        if (!player) {
+          // Si el jugador no existe, crear uno nuevo (no debería pasar, pero por seguridad)
+          player = addPlayer(`Jugador ${i + 1}`);
+        }
+        return {
+          ...player,
+          color: playerColors[i % playerColors.length],
+        };
+      })
+      .filter((p): p is Player => p !== null);
 
     const match = createMatch(matchName, course, holes, matchPlayers);
     
@@ -78,7 +125,13 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     setMatchName('');
     setCourse('');
     setNumHoles(9);
-    setPlayers([{ name: '' }, { name: '' }]);
+    if (user) {
+      const userPlayer = availablePlayers.find(p => p.name === user.name);
+      setSelectedPlayers(userPlayer ? [userPlayer.id] : []);
+    } else {
+      setSelectedPlayers([]);
+    }
+    setShowDropdowns([]);
   };
 
   return (
@@ -161,34 +214,54 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                     Jugadors
                   </label>
                   <div className="space-y-2">
-                    {players.map((player, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <div
-                          className="w-4 h-4 rounded-full shrink-0"
-                          style={{ backgroundColor: playerColors[index % playerColors.length] }}
-                        />
-                        <Input
-                          value={player.name}
-                          onChange={(e) => updatePlayerName(index, e.target.value)}
-                          placeholder={`Jugador ${index + 1}`}
-                          className="flex-1"
-                        />
-                        {players.length > 2 && (
-                          <button
-                            onClick={() => removePlayer(index)}
-                            className="p-2 rounded-lg hover:bg-destructive/10 text-destructive transition-colors"
+                    {selectedPlayers.map((playerId, index) => {
+                      const selectedPlayer = availablePlayers.find(p => p.id === playerId);
+                      return (
+                        <div key={index} className="flex items-center gap-2">
+                          {selectedPlayer ? (
+                            <PlayerAvatar
+                              name={selectedPlayer.name}
+                              color={selectedPlayer.color}
+                              size="sm"
+                            />
+                          ) : (
+                            <div
+                              className="w-8 h-8 rounded-full shrink-0 bg-muted"
+                              style={{ backgroundColor: playerColors[index % playerColors.length] }}
+                            />
+                          )}
+                          <Select
+                            value={playerId}
+                            onValueChange={(value) => updatePlayerSelection(index, value)}
                           >
-                            <X className="h-4 w-4" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                            <SelectTrigger className="flex-1">
+                              <SelectValue placeholder={`Selecciona jugador ${index + 1}`} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availablePlayers.map((player) => (
+                                <SelectItem key={player.id} value={player.id}>
+                                  {player.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {selectedPlayers.length > 2 && (
+                            <button
+                              onClick={() => removePlayerSlot(index)}
+                              className="p-2 rounded-lg hover:bg-destructive/10 text-destructive transition-colors"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  {players.length < 6 && (
+                  {selectedPlayers.length < 6 && (
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={addPlayer}
+                      onClick={addPlayerSlot}
                       className="mt-2 text-primary"
                     >
                       <UserPlus className="h-4 w-4 mr-2" />
@@ -202,7 +275,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 onClick={handleCreate}
                 className="w-full mt-6"
                 size="lg"
-                disabled={!matchName.trim() || !course.trim() || players.some(p => !p.name.trim())}
+                disabled={!matchName.trim() || !course.trim() || selectedPlayers.some(id => !id)}
               >
                 Crear Partida
               </Button>
