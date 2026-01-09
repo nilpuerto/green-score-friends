@@ -5,12 +5,11 @@
 ### 1. **Variables de Entorno**
 ✅ **Configurado correctamente**
 - Usa `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY`
-- Las variables se cargan desde `.env` en producción
-- **ACCIÓN REQUERIDA**: Crear archivo `.env` en el servidor con:
-  ```
-  VITE_SUPABASE_URL=https://iayyhkyxgugsusawxpox.supabase.co
-  VITE_SUPABASE_ANON_KEY=sb_publishable_zbSb2XZNVl9P5nTBCAHXZw_4G9MvzQ9
-  ```
+- Archivo `vercel.json` creado con configuración
+- Scripts de configuración creados: `setup-vercel-env.sh` y `setup-vercel-env.ps1`
+- **Variables configuradas en Vercel**:
+  - `VITE_SUPABASE_URL=https://iayyhkyxgugsusawxpox.supabase.co`
+  - `VITE_SUPABASE_ANON_KEY=sb_publishable_zbSb2XZNVl9P5nTBCAHXZw_4G9MvzQ9`
 
 ### 2. **URLs y Dominios**
 ✅ **Configurado para green-hunter.com**
@@ -61,13 +60,16 @@
 
 ---
 
-## 📋 **CHECKLIST ANTES DE SUBIR A PRODUCCIÓN**
+## 📋 **CHECKLIST PARA VERCEL**
 
-- [ ] Crear archivo `.env` en el servidor con variables de Supabase
-- [ ] Ejecutar `npm run build` para generar carpeta `dist/`
-- [ ] Subir carpeta `dist/` al servidor (green-hunter.com)
-- [ ] Verificar que el servidor sirve archivos estáticos correctamente
-- [ ] Verificar que las variables de entorno están disponibles en el servidor
+- [x] Archivo `vercel.json` creado con configuración
+- [x] Variables de entorno preparadas
+- [ ] Conectar repositorio a Vercel (si no está conectado)
+- [ ] Configurar variables de entorno en Vercel Dashboard O ejecutar script:
+  - Windows: `.\setup-vercel-env.ps1`
+  - Linux/Mac: `bash setup-vercel-env.sh`
+- [ ] Vercel hará el build automáticamente al hacer push
+- [ ] Verificar que el dominio está configurado (green-hunter.com)
 - [ ] Probar login en producción
 - [ ] Probar creación de partida en producción
 - [ ] Verificar que el Service Worker se registra correctamente
@@ -93,20 +95,30 @@ El archivo `clean_matches_data.sql` está listo para usar. Elimina:
 
 ---
 
-## 🚀 **COMANDOS PARA PRODUCCIÓN**
+## 🚀 **COMANDOS PARA VERCEL**
 
 ```bash
-# 1. Instalar dependencias
+# 1. Instalar dependencias (si es necesario)
 npm install
 
-# 2. Crear archivo .env con variables de Supabase
-# (crear manualmente en el servidor)
+# 2. Configurar variables de entorno en Vercel
+# Opción A: Usar script automático (requiere vercel login primero)
+# Windows PowerShell:
+.\setup-vercel-env.ps1
 
-# 3. Build para producción
-npm run build
+# Linux/Mac:
+bash setup-vercel-env.sh
 
-# 4. La carpeta dist/ contiene todo lo necesario
-# Subir dist/ al servidor web
+# Opción B: Configurar manualmente en Vercel Dashboard
+# Settings > Environment Variables > Add:
+# - VITE_SUPABASE_URL = https://iayyhkyxgugsusawxpox.supabase.co
+# - VITE_SUPABASE_ANON_KEY = sb_publishable_zbSb2XZNVl9P5nTBCAHXZw_4G9MvzQ9
+
+# 3. Hacer push al repositorio
+git push
+
+# 4. Vercel detectará el push y hará el build automáticamente
+# La aplicación estará disponible en tu dominio de Vercel
 ```
 
 ---
