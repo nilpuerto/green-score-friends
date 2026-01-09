@@ -75,7 +75,7 @@ export const Login: React.FC = () => {
             </h1>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off">
             <div>
               <label className="text-xs font-medium text-gray-700 mb-1.5 block">Nom</label>
               <div className="relative">
@@ -86,6 +86,9 @@ export const Login: React.FC = () => {
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="pl-10 h-11 text-sm rounded-lg bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-primary focus:bg-white transition-colors"
+                  autoComplete="off"
+                  data-1p-ignore
+                  data-lpignore="true"
                   required
                 />
               </div>
@@ -101,6 +104,9 @@ export const Login: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10 pr-10 h-11 text-sm rounded-lg bg-gray-50 border-gray-200 text-gray-900 placeholder:text-gray-400 focus:border-primary focus:bg-white transition-colors"
+                  autoComplete="new-password"
+                  data-1p-ignore
+                  data-lpignore="true"
                   required
                   minLength={4}
                 />

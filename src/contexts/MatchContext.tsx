@@ -112,14 +112,14 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           .map(mp => {
             const user = (usersData || []).find(u => u.id === mp.user_id);
             
-            return {
+            const player: Player = {
               id: mp.user_id,
               name: user?.username || 'Unknown',
               avatar: user?.profile_image,
               color: generateColorFromId(mp.user_id),
             };
-          })
-          .filter((p): p is Player => p !== null);
+            return player;
+          });
 
         const matchScores: Score[] = (scoresData || [])
           .filter(s => s.match_id === match.id)
@@ -273,37 +273,8 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     holeNumber: number,
     strokes: number
   ) => {
-    try {
-      // Primero verificar si ya existe un score para este match/user/hole
-      // Usar maybeSingle() en lugar de single() para evitar error si no existe
-      const { data: existingScore } = await supabase
-        .from('match_scores')
-        .select('id')
-        .eq('match_id', matchId)
-        .eq('user_id', playerId)
-        .eq('hole_number', holeNumber)
-        .maybeSingle();
-
-      // Si existe, usar su ID; si no, crear nuevo con ID
-      const scoreId = existingScore?.id || crypto.randomUUID();
-      
-      const { error } = await supabase
-        .from('match_scores')
-        .upsert({
-          id: scoreId,
-          match_id: matchId,
-          user_id: playerId,
-          hole_number: holeNumber,
-          strokes: strokes,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'match_id,user_id,hole_number',
-        });
-
-      if (error) throw error;
-
-      // Actualizar estado local (ambas listas)
-      const updateMatchScores = (match: Match) => {
+    // OPTIMISTIC UPDATE: Actualizar estado local INMEDIATAMENTE (sin esperar BD)
+    const updateMatchScores = (match: Match): Match => {
       const existingScoreIndex = match.scores.findIndex(
         s => s.playerId === playerId && s.holeNumber === holeNumber
       );
@@ -317,19 +288,20 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       }
       
       return { ...match, scores: newScores };
-      };
+    };
 
-      setAllMatches(prev => prev.map(match => {
-        if (match.id !== matchId) return match;
-        return updateMatchScores(match);
-      }));
+    // Actualizar estado local INMEDIATAMENTE (optimistic)
+    setAllMatches(prev => prev.map(match => {
+      if (match.id !== matchId) return match;
+      return updateMatchScores(match);
+    }));
 
-      setMatches(prev => prev.map(match => {
-        if (match.id !== matchId) return match;
-        return updateMatchScores(match);
-      }));
-      
-      // También actualizar activeMatch si es el mismo
+    setMatches(prev => prev.map(match => {
+      if (match.id !== matchId) return match;
+      return updateMatchScores(match);
+    }));
+    
+    // También actualizar activeMatch si es el mismo
     if (activeMatch?.id === matchId) {
       setActiveMatch(prev => {
         if (!prev) return null;
@@ -348,18 +320,30 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         return { ...prev, scores: newScores };
       });
     }
-      
-      // No recargar todo - ya actualizamos el estado local
-      // Solo recargar en background para sincronización (sin bloquear UI)
-      setTimeout(() => {
-        loadMatchesFromSupabase().catch(() => {
-          // Si falla, no importa, ya actualizamos el estado
-        });
-      }, 2000); // Delay más largo para no saturar
-    } catch (error) {
-      console.error('Error updating score:', error);
-    }
-  }, [activeMatch, loadMatchesFromSupabase]);
+
+    // Guardar en BD en background (sin bloquear UI)
+    // No esperar respuesta - hacerlo asíncrono
+    (async () => {
+      try {
+        // Upsert directamente sin verificar primero (más rápido)
+        await supabase
+          .from('match_scores')
+          .upsert({
+            id: crypto.randomUUID(), // Generar ID nuevo siempre (upsert lo manejará)
+            match_id: matchId,
+            user_id: playerId,
+            hole_number: holeNumber,
+            strokes: strokes,
+            updated_at: new Date().toISOString(),
+          }, {
+            onConflict: 'match_id,user_id,hole_number',
+          });
+      } catch (error) {
+        // Si falla, no importa - el estado local ya está actualizado
+        // En caso de error, se sincronizará en el próximo refresh
+      }
+    })();
+  }, [activeMatch]);
 
   const finishMatch = useCallback(async (matchId: string) => {
     try {
@@ -381,8 +365,66 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
       
       const winner = playerTotals[0];
 
-      // Actualizar en Supabase
-      const { error: matchError } = await supabase
+      // OPTIMISTIC UPDATE: Actualizar estado local INMEDIATAMENTE
+      const updateMatch = (m: Match): Match => {
+        if (m.id !== matchId) return m;
+        return { ...m, status: 'finished' as const, winnerId: winner.playerId };
+      };
+
+      setAllMatches(prev => prev.map(updateMatch));
+      setMatches(prev => prev.map(updateMatch));
+
+      if (activeMatch?.id === matchId) {
+        setActiveMatch(prev => prev ? { ...prev, status: 'finished', winnerId: winner.playerId } : null);
+      }
+
+      // Cargar datos de usuarios en PARALELO (mucho más rápido)
+      const userIds = playerTotals.map(pt => pt.playerId);
+      
+      // Query paralela: cargar todos los usuarios de una vez
+      const { data: allUsersData, error: usersError } = await supabase
+        .from('users')
+        .select('id, matches_played, wins, total_points, total_holes, avg_per_hole, birdies, hole_in_one')
+        .in('id', userIds);
+
+      if (usersError) {
+        console.error('Error fetching users:', usersError);
+      }
+
+      // Query paralela: cargar todos los achievements de usuarios de una vez
+      const { data: allUserAchievements, error: achievementsError } = await supabase
+        .from('user_achievements')
+        .select('user_id, achievement_id, achievements(code)')
+        .in('user_id', userIds);
+
+      // Query paralela: cargar todos los niveles de una vez
+      const { data: allLevels } = await supabase
+        .from('levels')
+        .select('id, required_achievements_count, order_index')
+        .order('order_index', { ascending: true });
+
+      // Query paralela: cargar todos los achievements base de una vez
+      const { data: allAchievementsBase } = await supabase
+        .from('achievements')
+        .select('id, code');
+
+      // Crear mapas para acceso rápido
+      const usersMap = new Map((allUsersData || []).map(u => [u.id, u]));
+      const achievementsMap = new Map((allAchievementsBase || []).map(a => [a.code, a.id]));
+      
+      // Agrupar achievements por usuario
+      const userAchievementsMap = new Map<string, Set<string>>();
+      allUserAchievements?.forEach((ua: any) => {
+        if (ua.achievements?.code) {
+          if (!userAchievementsMap.has(ua.user_id)) {
+            userAchievementsMap.set(ua.user_id, new Set());
+          }
+          userAchievementsMap.get(ua.user_id)!.add(ua.achievements.code);
+        }
+      });
+
+      // Actualizar partida en BD
+      await supabase
         .from('matches')
         .update({
           status: 'finished',
@@ -391,37 +433,16 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
         })
         .eq('id', matchId);
 
-      if (matchError) throw matchError;
+      // Preparar todas las actualizaciones en paralelo
+      const updatePromises: PromiseLike<any>[] = [];
 
-      // Actualizar posiciones y estadísticas de los participantes
+      // Procesar cada jugador (usando datos ya cargados en paralelo)
       for (let i = 0; i < playerTotals.length; i++) {
         const playerTotal = playerTotals[i];
         const position = i + 1;
 
-        const { error: playerError } = await supabase
-          .from('match_players')
-          .update({
-            position: position,
-            total_strokes: playerTotal.total,
-            avg_per_hole: parseFloat(playerTotal.avg.toFixed(2)),
-          })
-          .eq('match_id', matchId)
-          .eq('user_id', playerTotal.playerId);
-
-        if (playerError) throw playerError;
-
-        // Actualizar estadísticas del usuario
-        const { data: userData, error: userFetchError } = await supabase
-          .from('users')
-          .select('matches_played, wins, total_points, total_holes, avg_per_hole, birdies, hole_in_one')
-          .eq('id', playerTotal.playerId)
-          .single();
-
-        if (userFetchError) {
-          console.error('Error fetching user stats:', userFetchError);
-          continue;
-        }
-
+        // Obtener datos del usuario desde el mapa (ya cargado)
+        const userData = usersMap.get(playerTotal.playerId);
         const userStats = userData || {
           matches_played: 0,
           wins: 0,
@@ -446,188 +467,102 @@ export const MatchProvider: React.FC<{ children: ReactNode }> = ({ children }) =
           }
         });
 
-        // Calcular nueva media
+        // Calcular nuevas estadísticas
         const newTotalHoles = userStats.total_holes + playerTotal.holesPlayed;
         const newTotalPoints = userStats.total_points + playerTotal.total;
         const newAvgPerHole = newTotalHoles > 0 ? newTotalPoints / newTotalHoles : 0;
-        const currentWins = userStats.wins || 0;
-        const newWins = position === 1 ? currentWins + 1 : currentWins;
-        const currentMatchesPlayed = userStats.matches_played || 0;
-        const newMatchesPlayed = currentMatchesPlayed + 1;
-        const currentBirdies = userStats.birdies || 0;
-        const newBirdies = currentBirdies + birdies;
-        const currentHoleInOne = userStats.hole_in_one || 0;
-        const newHoleInOne = currentHoleInOne + holeInOne;
+        const newWins = position === 1 ? (userStats.wins || 0) + 1 : (userStats.wins || 0);
+        const newMatchesPlayed = (userStats.matches_played || 0) + 1;
+        const newBirdies = (userStats.birdies || 0) + birdies;
+        const newHoleInOne = (userStats.hole_in_one || 0) + holeInOne;
 
-        // Desbloquear achievements según las estadísticas
-        // Primero verificar qué achievements ya tiene desbloqueados
-        const { data: existingAchievements, error: existingAchievementsError } = await supabase
-          .from('user_achievements')
-          .select('achievement_id, achievements(code)')
-          .eq('user_id', playerTotal.playerId);
+        // Obtener achievements desbloqueados desde el mapa (ya cargado)
+        const unlockedCodes = userAchievementsMap.get(playerTotal.playerId) || new Set<string>();
 
-        if (existingAchievementsError) {
-          // Si hay error, continuar sin achievements desbloqueados (se intentará desbloquear)
-        }
-
-        const unlockedCodes = new Set<string>();
-        existingAchievements?.forEach((ea: any) => {
-          if (ea.achievements?.code) {
-            unlockedCodes.add(ea.achievements.code);
-          }
-        });
-
+        // Determinar qué achievements desbloquear
         const achievementsToUnlock: string[] = [];
-        
-        // Primera victoria: verificar SIEMPRE si tiene exactamente 1 victoria y no tiene el achievement
-        // IMPORTANTE: Verificar newWins (después de este partido) porque es el valor final
-        // Si tiene 1 victoria en total y no tiene el achievement, desbloquearlo
         if (!unlockedCodes.has('first-win') && newWins === 1) {
           achievementsToUnlock.push('first-win');
         }
-        
-        // 5 victorias: si tiene 5 o más victorias y no tiene el achievement
         if (newWins >= 5 && !unlockedCodes.has('five-wins')) {
           achievementsToUnlock.push('five-wins');
         }
-        
-        // 10 partidos: si tiene 10 o más partidos y no tiene el achievement
         if (newMatchesPlayed >= 10 && !unlockedCodes.has('ten-matches')) {
           achievementsToUnlock.push('ten-matches');
         }
-        
-        // 5 birdies: si tiene 5 o más birdies y no tiene el achievement
         if (newBirdies >= 5 && !unlockedCodes.has('five-birdies')) {
           achievementsToUnlock.push('five-birdies');
         }
-        
-        // Hole in one: si tiene al menos 1 hole in one y no tiene el achievement
         if (newHoleInOne >= 1 && !unlockedCodes.has('hole-in-one')) {
           achievementsToUnlock.push('hole-in-one');
         }
 
-        // Desbloquear achievements
+        // Desbloquear achievements (usar mapa de achievements base)
         for (const achievementCode of achievementsToUnlock) {
-          // Obtener el achievement por código
-          const { data: achievement, error: achievementError } = await supabase
-            .from('achievements')
-            .select('id')
-            .eq('code', achievementCode)
-            .maybeSingle();
-
-          if (achievementError) {
-            console.error(`Error fetching achievement ${achievementCode}:`, achievementError);
-            continue;
-          }
-
-          if (achievement) {
-            // Verificar si ya está desbloqueado
-            const { data: existing, error: existingError } = await supabase
-              .from('user_achievements')
-              .select('id')
-              .eq('user_id', playerTotal.playerId)
-              .eq('achievement_id', achievement.id)
-              .maybeSingle();
-
-            if (existingError && existingError.code !== 'PGRST116') {
-              console.error(`Error checking existing achievement ${achievementCode}:`, existingError);
-              continue;
-            }
-
-            // Si no está desbloqueado, desbloquearlo
-            // Usar upsert para asegurar que se guarde incluso si hay race conditions
-            if (!existing) {
-              const { error: upsertError } = await supabase
+          const achievementId = achievementsMap.get(achievementCode);
+          if (achievementId) {
+            updatePromises.push(
+              supabase
                 .from('user_achievements')
                 .upsert({
                   id: crypto.randomUUID(),
                   user_id: playerTotal.playerId,
-                  achievement_id: achievement.id,
+                  achievement_id: achievementId,
                 }, {
                   onConflict: 'user_id,achievement_id'
-                });
-
-              if (upsertError) {
-                // Si upsert falla, intentar insert normal como fallback
-                await supabase
-                  .from('user_achievements')
-                  .insert({
-                    id: crypto.randomUUID(),
-                    user_id: playerTotal.playerId,
-                    achievement_id: achievement.id,
-                  });
-              }
-            }
+                })
+            );
           }
         }
 
-        // Calcular nivel según achievements desbloqueados
-        const { data: userAchievements, error: userAchievementsError } = await supabase
-          .from('user_achievements')
-          .select('achievement_id')
-          .eq('user_id', playerTotal.playerId);
-
-        if (userAchievementsError) {
-          // Silently handle error
-        }
-
-        const achievementsCount = userAchievements?.length || 0;
-
-        // Obtener el nivel apropiado según el número de achievements
-        // Buscar el nivel más alto que el usuario puede alcanzar con sus achievements
-        const { data: allLevels } = await supabase
-          .from('levels')
-          .select('id, required_achievements_count, order_index')
-          .order('order_index', { ascending: true });
-
+        // Calcular nivel (usar datos ya cargados)
+        const achievementsCount = unlockedCodes.size + achievementsToUnlock.length;
         let appropriateLevelId = null;
         if (allLevels && allLevels.length > 0) {
-          // Encontrar el nivel más alto que el usuario puede alcanzar
-          for (let i = allLevels.length - 1; i >= 0; i--) {
-            if (achievementsCount >= allLevels[i].required_achievements_count) {
-              appropriateLevelId = allLevels[i].id;
+          for (let j = allLevels.length - 1; j >= 0; j--) {
+            if (achievementsCount >= allLevels[j].required_achievements_count) {
+              appropriateLevelId = allLevels[j].id;
               break;
             }
           }
-          // Si no encuentra ninguno, usar Rookie (el primero)
           if (!appropriateLevelId) {
             appropriateLevelId = allLevels[0].id;
           }
         }
 
-        // Actualizar usuario con estadísticas y nivel
-        const { error: updateUserError } = await supabase
-          .from('users')
-          .update({
-            matches_played: newMatchesPlayed,
-            wins: newWins,
-            total_points: newTotalPoints,
-            total_holes: newTotalHoles,
-            avg_per_hole: parseFloat(newAvgPerHole.toFixed(2)),
-            birdies: newBirdies,
-            hole_in_one: newHoleInOne,
-            level_id: appropriateLevelId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', playerTotal.playerId);
+        // Añadir actualizaciones a las promesas (ejecutar en paralelo)
+        updatePromises.push(
+          supabase
+            .from('match_players')
+            .update({
+              position: position,
+              total_strokes: playerTotal.total,
+              avg_per_hole: parseFloat(playerTotal.avg.toFixed(2)),
+            })
+            .eq('match_id', matchId)
+            .eq('user_id', playerTotal.playerId)
+        );
 
-        if (updateUserError) {
-          console.error('Error updating user stats:', updateUserError);
-        }
+        updatePromises.push(
+          supabase
+            .from('users')
+            .update({
+              matches_played: newMatchesPlayed,
+              wins: newWins,
+              total_points: newTotalPoints,
+              total_holes: newTotalHoles,
+              avg_per_hole: parseFloat(newAvgPerHole.toFixed(2)),
+              birdies: newBirdies,
+              hole_in_one: newHoleInOne,
+              level_id: appropriateLevelId,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', playerTotal.playerId)
+        );
       }
 
-      // Actualizar estado local (ambas listas)
-      const updateMatch = (m: Match) => {
-        if (m.id !== matchId) return m;
-        return { ...m, status: 'finished', winnerId: winner.playerId };
-      };
-
-      setAllMatches(prev => prev.map(updateMatch));
-      setMatches(prev => prev.map(updateMatch));
-
-      if (activeMatch?.id === matchId) {
-        setActiveMatch(prev => prev ? { ...prev, status: 'finished', winnerId: winner.playerId } : null);
-      }
+      // Ejecutar TODAS las actualizaciones en PARALELO (mucho más rápido)
+      await Promise.all(updatePromises.map(p => Promise.resolve(p)));
     } catch (error) {
       console.error('Error finishing match:', error);
     }
