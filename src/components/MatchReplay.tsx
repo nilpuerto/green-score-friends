@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, Play, Pause, SkipForward, Trophy, Eye } from 'lucide-react';
 import { Match } from '@/types/golf';
 import { PlayerAvatar } from './PlayerAvatar';
+import { Logo } from './Logo';
 import { Button } from '@/components/ui/button';
 import confetti from 'canvas-confetti';
 
@@ -24,6 +25,13 @@ export const MatchReplay: React.FC<MatchReplayProps> = ({ match, onBack }) => {
     return match.scores
       .filter(s => s.playerId === playerId && (!upToHole || s.holeNumber <= upToHole))
       .reduce((sum, s) => sum + s.strokes, 0);
+  };
+
+  const getPlayerAverage = (playerId: string) => {
+    const playerScores = match.scores.filter(s => s.playerId === playerId);
+    if (playerScores.length === 0) return 0;
+    const total = playerScores.reduce((sum, s) => sum + s.strokes, 0);
+    return (total / playerScores.length).toFixed(1);
   };
 
   const getScoreColor = (strokes: number | undefined, par: number) => {
@@ -84,6 +92,7 @@ export const MatchReplay: React.FC<MatchReplayProps> = ({ match, onBack }) => {
           <button onClick={onBack} className="p-2 -ml-2 rounded-full hover:bg-muted transition-colors">
             <ChevronLeft className="h-6 w-6 text-foreground" />
           </button>
+          <Logo size="md" showText={false} />
           <div className="flex-1">
             <h1 className="font-medium text-lg text-foreground">{match.name}</h1>
             <p className="text-sm text-muted-foreground">{match.course}</p>
@@ -138,6 +147,7 @@ export const MatchReplay: React.FC<MatchReplayProps> = ({ match, onBack }) => {
                   .map(player => ({
                     player,
                     total: getPlayerTotal(player.id),
+                    avg: getPlayerAverage(player.id),
                   }))
                   .sort((a, b) => a.total - b.total)
                   .map((item, index) => (
@@ -158,7 +168,10 @@ export const MatchReplay: React.FC<MatchReplayProps> = ({ match, onBack }) => {
                         size="sm"
                         isLeader={item.player.id === match.winnerId}
                       />
-                      <span className="flex-1 font-medium text-foreground">{item.player.name}</span>
+                      <div className="flex-1">
+                        <span className="font-medium text-foreground block">{item.player.name}</span>
+                        <span className="text-xs text-muted-foreground">AVG: {item.avg}</span>
+                      </div>
                       <span className="font-medium text-primary">{item.total}</span>
                     </div>
                   ))}
@@ -185,7 +198,7 @@ export const MatchReplay: React.FC<MatchReplayProps> = ({ match, onBack }) => {
                     <tr key={player.id} className="border-b border-border/50 last:border-0">
                       <td className="py-2 pr-4">
                         <div className="flex items-center gap-2">
-                          <PlayerAvatar name={player.name} color={player.color} size="sm" />
+                          <PlayerAvatar name={player.name} avatar={player.avatar} color={player.color} size="sm" />
                           <span className="text-foreground">{player.name}</span>
                         </div>
                       </td>

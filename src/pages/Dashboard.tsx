@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Target, Plus } from 'lucide-react';
+import { Target, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -29,9 +29,18 @@ type Tab = 'home' | 'hall' | 'stats' | 'profile';
 
 export const Dashboard: React.FC = () => {
   const { user, logout } = useAuth();
-  const { matches, activeMatch, setActiveMatch, getMatchById, deleteMatch } = useMatch();
+  const { matches, allMatches, activeMatch, setActiveMatch, getMatchById, deleteMatch } = useMatch();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<Tab>('home');
+  // Guardar la pestaña activa en sessionStorage para restaurarla al volver
+  const [activeTab, setActiveTab] = useState<Tab>(() => {
+    const saved = sessionStorage.getItem('greenHuntersActiveTab');
+    return (saved as Tab) || 'home';
+  });
+
+  // Guardar la pestaña activa cuando cambie
+  useEffect(() => {
+    sessionStorage.setItem('greenHuntersActiveTab', activeTab);
+  }, [activeTab]);
   const [viewingMatch, setViewingMatch] = useState<Match | null>(null);
   const [matchToDelete, setMatchToDelete] = useState<Match | null>(null);
 
@@ -82,7 +91,7 @@ export const Dashboard: React.FC = () => {
       shareText += '\n';
     });
 
-    shareText += `\n🎯 Green Hunters`;
+    shareText += `\n🎯 GreenHunters`;
 
     // Crear URL de WhatsApp
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(shareText)}`;
@@ -147,7 +156,7 @@ export const Dashboard: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Logo size="md" showText={false} />
-            <span className="text-sm font-medium text-primary">Green Hunters</span>
+            <span className="text-sm font-medium text-primary">GreenHunters</span>
           </div>
           <div className="flex items-center gap-3">
             {activeTab === 'home' && ongoingMatches.length > 0 && (
@@ -196,7 +205,7 @@ export const Dashboard: React.FC = () => {
                       <MatchCard
                         match={match}
                         onClick={() => handleMatchClick(match)}
-                        onDelete={match.status === 'finished' ? () => setMatchToDelete(match) : undefined}
+                        onDelete={() => setMatchToDelete(match)}
                       />
                     </motion.div>
                   ))}
@@ -258,7 +267,7 @@ export const Dashboard: React.FC = () => {
             style={{ height: 'calc(100vh - 180px)', WebkitOverflowScrolling: 'touch' }}
           >
             <HallOfFame 
-              matches={matches} 
+              matches={allMatches} 
               onViewMatch={(match) => setViewingMatch(match)}
             />
           </motion.main>
@@ -273,7 +282,7 @@ export const Dashboard: React.FC = () => {
             className="p-4 h-full overflow-y-auto"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
-            <Statistics matches={matches} />
+            <Statistics matches={allMatches} />
           </motion.main>
         )}
 
@@ -283,13 +292,14 @@ export const Dashboard: React.FC = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="p-4 profile-scroll h-full"
+            className="p-4 profile-scroll overflow-y-auto"
             style={{ 
-              overflowY: 'scroll',
               WebkitOverflowScrolling: 'touch',
               paddingBottom: '6rem',
               msOverflowStyle: 'none',
-              scrollbarWidth: 'none'
+              scrollbarWidth: 'none',
+              height: 'calc(100vh - 140px)',
+              maxHeight: 'calc(100vh - 140px)'
             }}
           >
             <Profile 
@@ -311,23 +321,27 @@ export const Dashboard: React.FC = () => {
       
       {/* Delete Match Dialog */}
       <AlertDialog open={!!matchToDelete} onOpenChange={(open) => !open && setMatchToDelete(null)}>
-        <AlertDialogContent className="max-w-[90vw] sm:max-w-lg p-4 sm:p-6 rounded-2xl">
+        <AlertDialogContent className="max-w-[90vw] sm:max-w-md p-5 rounded-2xl">
           <AlertDialogHeader className="pb-2">
-            <AlertDialogTitle className="text-lg">Eliminar partida</AlertDialogTitle>
-            <AlertDialogDescription className="text-sm">
-              Estàs segur? Això eliminarà totes les estadístiques d'aquest partit.
+            <AlertDialogTitle className="text-lg font-semibold text-foreground">
+              Eliminar partida
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-muted-foreground">
+              Vols posar aquest partit a la casa d'en Bague?
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:gap-0">
-            <AlertDialogCancel className="w-full sm:w-auto m-0">Cancel·lar</AlertDialogCancel>
+          <AlertDialogFooter className="flex-row gap-3 sm:gap-3 mt-3">
+            <AlertDialogCancel className="w-full sm:w-auto m-0 bg-gray-200 hover:bg-gray-300 text-gray-900 border-0">
+              Cancel·lar
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => {
+              onClick={async () => {
                 if (matchToDelete) {
-                  deleteMatch(matchToDelete.id);
+                  await deleteMatch(matchToDelete.id);
                   setMatchToDelete(null);
                 }
               }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full sm:w-auto m-0"
+              className="w-full sm:w-auto m-0 bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Eliminar
             </AlertDialogAction>

@@ -7,6 +7,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import { MatchProvider } from "./contexts/MatchContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
 import Index from "./pages/Index";
+import PlayerProfile from "./pages/PlayerProfile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ const App = () => (
             <BrowserRouter>
               <Routes>
                 <Route path="/" element={<Index />} />
+                <Route path="/player/:playerId" element={<PlayerProfile />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>

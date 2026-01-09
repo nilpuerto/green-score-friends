@@ -9,15 +9,16 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Hole, Player } from '@/types/golf';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlayerAvatar } from './PlayerAvatar';
+import { Logo } from './Logo';
+import { generateColorFromId } from '@/lib/utils';
 import confetti from 'canvas-confetti';
+import { toast } from 'sonner';
 
 interface CreateMatchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onMatchCreated: (matchId: string) => void;
 }
-
-const playerColors = ['#1B5E3C', '#2D7A50', '#3D9A64', '#4CAF50', '#66BB6A', '#81C784'];
 
 export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   isOpen,
@@ -77,6 +78,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   };
 
   const updatePlayerSelection = (index: number, playerId: string) => {
+    // Verificar que el jugador no esté ya seleccionado en otro slot
+    if (playerId && selectedPlayers.some((id, i) => i !== index && id === playerId)) {
+      return; // No permitir duplicados
+    }
+    
     const updated = [...selectedPlayers];
     updated[index] = playerId;
     setSelectedPlayers(updated);
@@ -86,7 +92,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     setShowDropdowns(dropdowns);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!matchName.trim() || !course.trim()) return;
     if (selectedPlayers.some(id => !id)) return;
 
@@ -96,20 +102,25 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     }));
 
     const matchPlayers: Player[] = selectedPlayers
-      .map((playerId, i) => {
+      .map((playerId) => {
         let player = availablePlayers.find(p => p.id === playerId);
         if (!player) {
           // Si el jugador no existe, crear uno nuevo (no debería pasar, pero por seguridad)
-          player = addPlayer(`Jugador ${i + 1}`);
+          player = addPlayer(`Jugador ${playerId}`);
         }
-        return {
-          ...player,
-          color: playerColors[i % playerColors.length],
-        };
+        // El jugador ya tiene su color único asignado, no necesitamos cambiarlo
+        return player;
       })
       .filter((p): p is Player => p !== null);
 
-    const match = createMatch(matchName, course, holes, matchPlayers);
+    const match = await createMatch(matchName, course, holes, matchPlayers);
+    
+    if (!match) {
+      toast.error('Error al crear la partida', {
+        description: 'Hi ha hagut un problema en crear la partida. Torna-ho a intentar.',
+      });
+      return;
+    }
     
     confetti({
       particleCount: 80,
@@ -154,7 +165,10 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
           >
             <div className="p-6">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-foreground">Nova Partida</h2>
+                <div className="flex items-center gap-2">
+                  <Logo size="md" showText={false} />
+                  <h2 className="text-xl font-bold text-foreground">Nova Partida</h2>
+                </div>
                 <button
                   onClick={onClose}
                   className="p-2 rounded-full hover:bg-muted transition-colors"
@@ -221,14 +235,17 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                           {selectedPlayer ? (
                             <PlayerAvatar
                               name={selectedPlayer.name}
+                              avatar={selectedPlayer.avatar}
                               color={selectedPlayer.color}
                               size="sm"
                             />
                           ) : (
                             <div
-                              className="w-8 h-8 rounded-full shrink-0 bg-muted"
-                              style={{ backgroundColor: playerColors[index % playerColors.length] }}
-                            />
+                              className="w-8 h-8 rounded-full shrink-0 bg-muted flex items-center justify-center text-xs font-medium text-white"
+                              style={{ backgroundColor: '#1B5E3C' }}
+                            >
+                              ?
+                            </div>
                           )}
                           <Select
                             value={playerId}
@@ -238,11 +255,18 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                               <SelectValue placeholder={`Selecciona jugador ${index + 1}`} />
                             </SelectTrigger>
                             <SelectContent>
-                              {availablePlayers.map((player) => (
-                                <SelectItem key={player.id} value={player.id}>
-                                  {player.name}
-                                </SelectItem>
-                              ))}
+                              {availablePlayers
+                                .filter(player => {
+                                  // No mostrar jugadores ya seleccionados en otros slots
+                                  return !selectedPlayers.some((selectedId, i) => 
+                                    i !== index && selectedId === player.id
+                                  );
+                                })
+                                .map((player) => (
+                                  <SelectItem key={player.id} value={player.id}>
+                                    {player.name}
+                                  </SelectItem>
+                                ))}
                             </SelectContent>
                           </Select>
                           {selectedPlayers.length > 2 && (

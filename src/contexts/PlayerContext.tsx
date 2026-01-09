@@ -1,32 +1,67 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useCallback, useEffect } from 'react';
 import { Player } from '@/types/golf';
+import { supabase } from '@/lib/supabase';
+import { generateGolfCardColorFromId } from '@/lib/utils';
 
 interface PlayerContextType {
   players: Player[];
   addPlayer: (name: string) => Player;
   getPlayerById: (id: string) => Player | undefined;
   getPlayerByName: (name: string) => Player | undefined;
+  isLoading: boolean;
+  refreshPlayers: () => Promise<void>;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
 
-// Colores disponibles para jugadores
-const playerColors = ['#1B5E3C', '#2D7A50', '#3D9A64', '#4CAF50', '#66BB6A', '#81C784', '#A5D6A7', '#C8E6C9'];
-
-// Jugadores iniciales (se pueden añadir más desde la app)
-const initialPlayers: Player[] = [];
-
 export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [players, setPlayers] = useState<Player[]>(() => {
-    // Cargar jugadores del localStorage
-    const saved = localStorage.getItem('greenHuntersPlayers');
-    return saved ? JSON.parse(saved) : initialPlayers;
-  });
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Guardar en localStorage cuando cambie
-  React.useEffect(() => {
-    localStorage.setItem('greenHuntersPlayers', JSON.stringify(players));
-  }, [players]);
+  // Función para cargar usuarios de Supabase
+  const loadUsersFromSupabase = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const { data: users, error } = await supabase
+        .from('users')
+        .select('id, username, profile_image');
+
+      if (error) {
+        console.error('Error loading users:', error);
+        setIsLoading(false);
+        return;
+      }
+
+      if (users && users.length > 0) {
+        // Convertir usuarios de BD a Players con colores únicos de golf para las cards
+        const playersFromDB: Player[] = users.map((user) => {
+          // Generar color único de golf (marrones, verdes, rojos, amarillos) para las cards
+          const cardColor = generateGolfCardColorFromId(user.id);
+          return {
+            id: user.id,
+            name: user.username,
+            color: cardColor, // Color para las cards (colores de golf)
+            avatar: user.profile_image || undefined,
+          };
+        });
+
+        setPlayers(playersFromDB);
+      } else {
+        // Si no hay usuarios, inicializar con array vacío
+        setPlayers([]);
+      }
+    } catch (error) {
+      console.error('Error loading users from Supabase:', error);
+      setPlayers([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Cargar todos los usuarios de Supabase al montar el componente
+  useEffect(() => {
+    loadUsersFromSupabase();
+  }, [loadUsersFromSupabase]);
 
   const addPlayer = useCallback((name: string): Player => {
     // Verificar si el jugador ya existe
@@ -35,10 +70,11 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       return existing;
     }
 
+    const newId = crypto.randomUUID();
     const newPlayer: Player = {
-      id: crypto.randomUUID(),
+      id: newId,
       name,
-      color: playerColors[players.length % playerColors.length],
+      color: generateGolfCardColorFromId(newId), // Color de golf para la card
     };
     
     setPlayers(prev => [...prev, newPlayer]);
@@ -59,6 +95,8 @@ export const PlayerProvider: React.FC<{ children: ReactNode }> = ({ children }) 
       addPlayer,
       getPlayerById,
       getPlayerByName,
+      isLoading,
+      refreshPlayers: loadUsersFromSupabase,
     }}>
       {children}
     </PlayerContext.Provider>
@@ -72,4 +110,3 @@ export const usePlayers = () => {
   }
   return context;
 };
-

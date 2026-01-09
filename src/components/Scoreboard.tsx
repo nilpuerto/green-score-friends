@@ -3,7 +3,9 @@ import { motion } from 'framer-motion';
 import { ChevronLeft, Trophy, Minus, Plus, ChevronRight } from 'lucide-react';
 import { Match, ScoreType } from '@/types/golf';
 import { useMatch } from '@/contexts/MatchContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { PlayerAvatar } from './PlayerAvatar';
+import { Logo } from './Logo';
 import { ScoreAnimation } from './ScoreAnimation';
 import { Button } from '@/components/ui/button';
 import confetti from 'canvas-confetti';
@@ -15,6 +17,7 @@ interface ScoreboardProps {
 
 export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
   const { updateScore, finishMatch, setActiveMatch } = useMatch();
+  const { refreshUser } = useAuth();
   const [currentHole, setCurrentHole] = useState(1);
   const [animationType, setAnimationType] = useState<ScoreType | null>(null);
   const [lastUpdatedPlayer, setLastUpdatedPlayer] = useState<string | null>(null);
@@ -51,7 +54,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
     return 'text-destructive';
   };
 
-  const handleScoreChange = useCallback((playerId: string, delta: number) => {
+  const handleScoreChange = useCallback(async (playerId: string, delta: number) => {
     const currentScore = getPlayerScore(playerId, currentHole) || match.holes[currentHole - 1].par;
     const newScore = Math.max(1, currentScore + delta);
     
@@ -62,7 +65,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
     }
     setAnimationType(null);
     
-    updateScore(match.id, playerId, currentHole, newScore);
+    await updateScore(match.id, playerId, currentHole, newScore);
     setLastUpdatedPlayer(playerId);
 
     const par = match.holes[currentHole - 1].par;
@@ -106,8 +109,12 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
     getPlayerScore(p.id, currentHole) !== undefined
   );
 
-  const handleFinishMatch = () => {
-    finishMatch(match.id);
+  const handleFinishMatch = async () => {
+    await finishMatch(match.id);
+    // Refrescar usuario para actualizar nivel y achievements si cambiaron
+    await refreshUser();
+    // Pequeño delay para asegurar que los achievements se hayan guardado
+    await new Promise(resolve => setTimeout(resolve, 500));
     confetti({
       particleCount: 150,
       spread: 120,
@@ -132,6 +139,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
           <button onClick={onBack} className="p-2 -ml-2 rounded-full hover:bg-muted transition-colors">
             <ChevronLeft className="h-6 w-6 text-foreground" />
           </button>
+          <Logo size="md" showText={false} />
           <div className="flex-1">
             <h1 className="font-bold text-lg text-foreground">{match.name}</h1>
             <p className="text-sm text-muted-foreground">{match.course}</p>
@@ -200,6 +208,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ match, onBack }) => {
                 <div className="flex items-center gap-3">
                   <PlayerAvatar
                     name={player.name}
+                    avatar={player.avatar}
                     color={player.color}
                     size="md"
                     isLeader={isLeader}

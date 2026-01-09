@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { MapPin, Users, Trophy, MoreVertical, Trash2, Share2 } from 'lucide-react';
+import { MapPin, Users, Trophy, Trash2, Share2, MoreVertical } from 'lucide-react';
 import { Match } from '@/types/golf';
 import { PlayerAvatar } from './PlayerAvatar';
 import {
@@ -58,7 +58,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onClick, onDelete, 
           }`}>
             {match.status === 'ongoing' ? 'En joc' : 'Acabat'}
           </div>
-          {match.status === 'finished' && (onDelete || onShare) && (
+          {(onDelete || onShare) && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
@@ -66,12 +66,13 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onClick, onDelete, 
                     e.stopPropagation();
                   }}
                   className="p-1.5 rounded-full hover:bg-muted transition-colors"
+                  title="Opcions"
                 >
                   <MoreVertical className="h-4 w-4 text-muted-foreground" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-40">
-                {onShare && (
+                {onShare && match.status === 'finished' && (
                   <DropdownMenuItem
                     onClick={(e) => {
                       e.stopPropagation();
@@ -109,6 +110,7 @@ export const MatchCard: React.FC<MatchCardProps> = ({ match, onClick, onDelete, 
               <PlayerAvatar
                 key={player.id}
                 name={player.name}
+                avatar={player.avatar}
                 color={player.color}
                 size="sm"
                 isLeader={leader?.id === player.id}
